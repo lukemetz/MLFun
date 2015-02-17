@@ -21,11 +21,11 @@ from blocks.algorithms import Momentum, GradientDescent, Scale, StepRule, AdaDel
 
 from blocks.main_loop import MainLoop
 from blocks.extensions import Printing, Timing
-from blocks.extensions import SimpleExtension
 from blocks.extensions.monitoring import DataStreamMonitoring
 
 from cuboid.algorithms import AdaM
 from cuboid.bricks import BatchNormalizationConv, BatchNormalization
+from cuboid.extensions import LogToFile
 
 X = T.matrix("features")
 
@@ -131,26 +131,12 @@ test_stream = DataStream(
 monitor_test = DataStreamMonitoring(variables=[cost, miss_class], data_stream=test_stream, prefix="test")
 monitor_train = DataStreamMonitoring(variables=[cost, miss_class], data_stream=train_stream, prefix="train")
 
-
-class ToFile(SimpleExtension):
-    def __init__(self, **kwargs):
-        kwargs.setdefault("before_first_epoch", True)
-        kwargs.setdefault("on_resumption", True)
-        kwargs.setdefault("after_training", True)
-        kwargs.setdefault("after_every_epoch", True)
-        kwargs.setdefault("on_interrupt", True)
-        super(ToFile, self).__init__(**kwargs)
-
-    def do(self, which_callback, *args):
-        self.main_loop.log.to_dataframe().to_csv("tmp.csv")
-
-
 print "Making main loop"
 main_loop = MainLoop(
         model=Y,
         data_stream=train_stream,
         algorithm=algorithm,
-        extensions=[monitor_test, monitor_train, Timing(), Printing(), ToFile()]
+        extensions=[monitor_test, monitor_train, Timing(), Printing(), LogToFile("tmp.csv")]
         )
 
 print "Starting main"
