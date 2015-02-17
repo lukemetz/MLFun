@@ -218,6 +218,9 @@ Y = T.imatrix(name="targets")
 cost = CategoricalCrossEntropy().apply(Y.flatten(), o)
 cost.name = "cost"
 
+miss_class = 1.0 - MisclassificationRate().apply(Y.flatten(), o)
+miss_class.name = "accuracy"
+
 class AdaM(StepRule):
     def __init__(self, alpha=0.0002, b1=0.1, b2=0.001, eps=1e-8):
         self.alpha = alpha
@@ -265,8 +268,8 @@ test_stream = DataStream(
     iteration_scheme= SequentialScheme(num_examples= mnist_test.num_examples, batch_size= 1024))
     #iteration_scheme= SequentialScheme(num_examples= 1000, batch_size= 1024))
 
-monitor_test = DataStreamMonitoring(variables=[cost], data_stream=test_stream, prefix="test")
-monitor_train = DataStreamMonitoring(variables=[cost], data_stream=train_stream, prefix="train")
+monitor_test = DataStreamMonitoring(variables=[cost, miss_class], data_stream=test_stream, prefix="test")
+monitor_train = DataStreamMonitoring(variables=[cost, miss_class], data_stream=train_stream, prefix="train")
 
 
 class ToFile(SimpleExtension):
@@ -279,7 +282,7 @@ class ToFile(SimpleExtension):
         super(ToFile, self).__init__(**kwargs)
 
     def do(self, which_callback, *args):
-        self.main_loop.log.to_dataframe().to_csv("norm2.csv")
+        self.main_loop.log.to_dataframe().to_csv("tmp.csv")
 
 
 print "Making main loop"
