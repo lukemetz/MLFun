@@ -27,6 +27,10 @@ from cuboid.algorithms import AdaM
 from cuboid.bricks import BatchNormalizationConv, BatchNormalization
 from cuboid.extensions import LogToFile
 
+from blocks.filter import VariableFilter, get_brick
+from blocks.model import Model
+from blocks.graph import ComputationGraph
+
 X = T.matrix("features")
 
 o = X.reshape((X.shape[0], 1, 28, 28))
@@ -34,7 +38,7 @@ o = X.reshape((X.shape[0], 1, 28, 28))
 l = Convolutional(filter_size=(5, 5),
         num_filters=32,
         num_channels=1,
-        image_shape=(28,28),
+        image_size=(28,28),
         weights_init=IsotropicGaussian(std=0.01),
         biases_init=IsotropicGaussian(std=0.01, mean=1.0),
         use_bias=True,
@@ -61,7 +65,7 @@ o = l.apply(o)
 l = Convolutional(filter_size=(3, 3),
         num_filters=32,
         num_channels=l.get_dim("output")[0],
-        image_shape=l.get_dim("output")[1:],
+        image_size=l.get_dim("output")[1:],
         weights_init=IsotropicGaussian(std=0.01),
         biases_init=IsotropicGaussian(std=0.01),
         use_bias=True,
@@ -112,6 +116,11 @@ cost.name = "cost"
 miss_class = 1.0 - MisclassificationRate().apply(Y.flatten(), o)
 miss_class.name = "accuracy"
 
+cg = ComputationGraph(cost)
+bricks = [get_brick(var) for var in cg.variables if get_brick(var)]
+for i, b in enumerate(bricks):
+    b.name += str(i)
+
 step_rule = AdaM()
 algorithm = GradientDescent(cost=cost, step_rule=step_rule)
 
@@ -131,9 +140,10 @@ test_stream = DataStream(
 monitor_test = DataStreamMonitoring(variables=[cost, miss_class], data_stream=test_stream, prefix="test")
 monitor_train = DataStreamMonitoring(variables=[cost, miss_class], data_stream=train_stream, prefix="train")
 
+
 print "Making main loop"
 main_loop = MainLoop(
-        model=Y,
+        model=Model(cost),
         data_stream=train_stream,
         algorithm=algorithm,
         extensions=[monitor_test, monitor_train, Timing(), Printing(), LogToFile("tmp.csv")]
