@@ -2,7 +2,7 @@ from theano import tensor as T
 import theano
 import numpy as np
 
-from fuel.datasets.mnist import MNIST
+from fuel.datasets.cifar10 import CIFAR10
 from fuel.streams import DataStream
 from fuel.schemes import ShuffledScheme
 
@@ -30,8 +30,8 @@ from model import VAModel
 
 m = VAModel()
 
-dataset = MNIST('train', sources=['features'])
-test_dataset = MNIST('test', sources=['features'])
+dataset = CIFAR10('train', sources=['features'])
+test_dataset = CIFAR10('test', sources=['features'])
 
 scheme = ShuffledScheme(dataset.num_examples, 128)
 datastream = DataStream(dataset, iteration_scheme=scheme)
@@ -44,7 +44,7 @@ cg = ComputationGraph([m.variational_cost])
 algorithm = GradientDescent(
         cost=m.variational_cost, params=cg.parameters,
         step_rule=AdaM())
-
+        #step_rule=NAG(lr=0.01, m=0.9))
 
 main_loop = MainLoop(
         algorithm,
@@ -65,9 +65,9 @@ main_loop = MainLoop(
             #, FinishAfter(after_n_epochs=10)
             , Printing()
             #, Dump("out.pkl")
-            , ExperimentSaver("../VAOut", ".")
+            , ExperimentSaver("../VAOutCIFAR", ".")
             , EpochProgress(dataset.num_examples // 128)
-            , Plot('mnist2',
+            , Plot('cifar10',
                 channels=[['train_variational_cost', 'test_variational_cost', 'test_cost']])
             ])
 main_loop.run()

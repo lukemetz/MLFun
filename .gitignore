@@ -1,0 +1,5 @@
+*.pyc
+*.pkl
+bokeh.data
+bokeh.server
+bokeh.sets

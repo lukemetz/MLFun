@@ -24,7 +24,7 @@ from blocks.extensions import Printing, Timing
 from blocks.extensions.monitoring import DataStreamMonitoring
 
 from cuboid.algorithms import AdaM
-from cuboid.bricks import BatchNormalizationConv, BatchNormalization
+from cuboid.bricks import BatchNormalizationConv, BatchNormalization, Dropout
 from cuboid.extensions import LogToFile
 
 from blocks.filter import VariableFilter, get_brick
@@ -55,12 +55,15 @@ o = l.apply(o)
 
 o = Rectifier().apply(o)
 
-
 l = MaxPooling(pooling_size=(2, 2),
         step=(2, 2),
         input_dim=l.get_dim("output"))
 l.initialize()
 o = l.apply(o)
+
+#ll = Dropout(p_drop=0.5)
+#ll.initialize()
+#o = ll.apply(o)
 
 l = Convolutional(filter_size=(3, 3),
         num_filters=32,
@@ -117,6 +120,9 @@ miss_class = 1.0 - MisclassificationRate().apply(Y.flatten(), o)
 miss_class.name = "accuracy"
 
 cg = ComputationGraph(cost)
+print cg.shared_variables
+
+
 bricks = [get_brick(var) for var in cg.variables if get_brick(var)]
 for i, b in enumerate(bricks):
     b.name += str(i)

@@ -35,22 +35,22 @@ class VAModel():
 
         #drop = Dropout(p_drop=0.5)
         #o = drop.apply(X)
-        o = X
-        self.noisy = o
+        o = (X - 128) / 128.0
+        self.scaled = o
 
         #n_hidden = 64
-        n_hidden = 128
-        n_zs = 2
+        n_hidden = 2048 * 2
+        n_zs = 1024
         self.n_zs = n_zs
 
         self.n_hidden = n_hidden
 
-        l = Linear(input_dim=28*28, output_dim=n_hidden,
+        l = Linear(input_dim=32*32*3, output_dim=n_hidden,
                 weights_init=IsotropicGaussian(0.01),
                 biases_init=Constant(0))
         l.initialize()
         o = l.apply(o)
-        o = Tanh().apply(o)
+        o = Rectifier().apply(o)
 
 
         l = Linear(input_dim=n_hidden, output_dim=n_hidden,
@@ -58,16 +58,16 @@ class VAModel():
                 biases_init=Constant(0))
         l.initialize()
         o = l.apply(o)
-        o = Tanh().apply(o)
+        o = Rectifier().apply(o)
 
         l = Linear(input_dim=n_hidden, output_dim=n_zs,
-                weights_init=IsotropicGaussian(.101),
+                weights_init=IsotropicGaussian(0.01),
                 biases_init=Constant(0))
         l.initialize()
         mu_encoder = l.apply(o)
 
         l = Linear(input_dim=n_hidden, output_dim=n_zs,
-                weights_init=IsotropicGaussian(0.1),
+                weights_init=IsotropicGaussian(0.01),
                 biases_init=Constant(0))
         l.initialize()
         log_sigma_encoder = l.apply(o)
@@ -77,7 +77,7 @@ class VAModel():
         z = eps * T.exp(log_sigma_encoder) + mu_encoder
 
         z_to_h1_decode = Linear(input_dim=n_zs, output_dim=n_hidden,
-                weights_init=IsotropicGaussian(0.1),
+                weights_init=IsotropicGaussian(0.01),
                 biases_init=Constant(0))
         z_to_h1_decode.initialize()
 
@@ -86,28 +86,32 @@ class VAModel():
                 biases_init=Constant(0))
         h1_decode_to_h_decode.initialize()
 
-        #o = z_to_h_decode.apply(z)
-        #h_decoder = Tanh().apply(o)
 
-        h_decode_produce = Linear(input_dim=n_hidden, output_dim=28*28,
+        h_decode_produce = Linear(input_dim=n_hidden, output_dim=32*32*3,
                 weights_init=IsotropicGaussian(0.01),
                 biases_init=Constant(0),
                 name="linear4")
         h_decode_produce.initialize()
         #o = h_decode_produce.apply(h_decoder)
 
+        h_decode_produce = Linear(input_dim=n_hidden, output_dim=32*32*3,
+                weights_init=IsotropicGaussian(0.01),
+                biases_init=Constant(0),
+                name="linear4")
+        h_decode_produce.initialize()
         #self.produced = Sigmoid().apply(o)
 
-        seq = Sequence([z_to_h1_decode.apply, Tanh().apply, h1_decode_to_h_decode.apply, Tanh().apply, h_decode_produce.apply, Sigmoid().apply])
+        seq = Sequence([z_to_h1_decode.apply, Rectifier().apply, h1_decode_to_h_decode.apply, Rectifier().apply,
+            h_decode_produce.apply, Sigmoid().apply])
         seq.initialize()
 
         self.produced = seq.apply(z)
 
-        self.cost = T.sum(T.sqr(self.produced - X))
-        #self.cost = T.sum(T.nnet.binary_crossentropy(self.produced, X)) #T.sum(T.sqr(self.produced - X))
+        self.cost = T.mean(T.sqr(self.produced - self.scaled))
+        #self.cost = T.sum(T.nnet.binary_crossentropy(self.produced, self.scaled)) #T.sum(T.sqr(self.produced - self.scaled))
         self.cost.name = "cost"
 
-        self.variational_cost = - 0.5 * T.sum(1 + 2*log_sigma_encoder - mu_encoder * mu_encoder\
+        self.variational_cost = - 0.5 * T.mean(1 + 2*log_sigma_encoder - mu_encoder * mu_encoder\
                 - T.exp(2 * log_sigma_encoder)) + self.cost
         self.variational_cost.name = "variational_cost"
 

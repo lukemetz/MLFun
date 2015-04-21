@@ -103,12 +103,16 @@ class VAModel():
 
         self.produced = seq.apply(z)
 
-        self.cost = T.sum(T.sqr(self.produced - X))
+        self.cost = T.sum(T.sqr(self.produced - X)) #regular old mean squared
         #self.cost = T.sum(T.nnet.binary_crossentropy(self.produced, X)) #T.sum(T.sqr(self.produced - X))
         self.cost.name = "cost"
 
+        # Computed with L = 1, only one sample of produced.
+        logpxz = T.sum(-1 * log_sigma_encoder * T.log(2*np.pi) - T.sqr((self.produced - X) / (2*T.exp(log_sigma_encoder))))
+
         self.variational_cost = - 0.5 * T.sum(1 + 2*log_sigma_encoder - mu_encoder * mu_encoder\
-                - T.exp(2 * log_sigma_encoder)) + self.cost
+                - T.exp(2 * log_sigma_encoder)) + logpxz
+
         self.variational_cost.name = "variational_cost"
 
         self.Z = T.matrix('z')
