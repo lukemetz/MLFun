@@ -1,3 +1,4 @@
+jobs/job8.pkl
 jobs/job7.pkl
 jobs/job6.pkl
 jobs/job5.pkl
