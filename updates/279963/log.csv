@@ -1,3 +1,3 @@
-,time_initialization,test_cost,test_accur,train_cost,time_train_this_epoch,train_accur,time_train_total,time_read_data_this_epoch,time_read_data_total,training_finish_requested
-0,2.0293948650360107,2.938061475753784,0.0982001582278481,,,,,,,
-391,,1.4384928941726685,0.48753955696202533,1.6998933553695679,4.110008716583252,0.39593190534035566,4.110008716583252,1.43113374710083,1.43113374710083,True
+,time_initialization,test_cost,test_accur,train_cost,time_train_this_epoch,train_accur,time_train_total,training_finished,time_read_data_this_epoch,time_read_data_total,training_finish_requested
+0,2.0293948650360107,2.938061475753784,0.0982001582278481,,,,,,,,
+391,,1.4384928941726685,0.48753955696202533,1.6998933553695679,4.110008716583252,0.39593190534035566,4.110008716583252,True,1.43113374710083,1.43113374710083,True
