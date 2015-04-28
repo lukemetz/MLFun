@@ -33,10 +33,7 @@ import logging
 logging.basicConfig()
 
 class Runner(object):
-    def __init__(self, worker, experiment):
-        config = experiment.get_by_result_id(int(worker.running_job))
-        print config, worker.running_job
-
+    def __init__(self, worker, experiment, config):
         # Data
         dataset = CIFAR10('train', flatten=False)
         test_dataset = CIFAR10('test', flatten=False)
@@ -61,7 +58,8 @@ class Runner(object):
                 cost = m.cost, params=cg.parameters,
                 step_rule = AdaM())
 
-        job_name = os.path.basename(worker.running_job)
+        #job_name = os.path.basename(worker.running_job)
+        job_name = os.path.basename(".")
         update_path = (os.path.join(os.path.join(worker.path, "updates"), job_name))
         if not os.path.exists(update_path):
             os.mkdir(update_path)
@@ -82,8 +80,8 @@ class Runner(object):
                 , LogToFile(os.path.join(update_path, "log.csv"))
                 , Printing()
                 , EpochProgress(dataset.num_examples // batch_size + 1)
-                , DistributeUpdate(worker, every_n_epochs=1)
-                , DistributeWhetlabFinish(worker, experiment, score_func)
+                #, DistributeUpdate(worker, every_n_epochs=1)
+                #, DistributeWhetlabFinish(worker, experiment, score_func)
                 #, Plot('cifar10',
                     #channels=[['train_cost', 'test_cost'], ['train_accur', 'test_accur']])
                 ])
@@ -98,12 +96,21 @@ def main():
     print "getting whetlab experiment"
     experiment = whetlab.Experiment(name="Cifar10_2")
 
-    while True:
-        job = worker.get_next_job(whetlab_make_next_jobs_func(worker, experiment))
-        print job
-        if job == None:
-            return
-        r = Runner(worker, experiment)
-        r.run()
+    #while True:
+        #job = worker.get_next_job(whetlab_make_next_jobs_func(worker, experiment))
+        #print job
+        #if job == None:
+            #return
+    #config = experiment.get_by_result_id(int(worker.running_job))
+    config = {}
+    config['n_l0'] = 100
+    config['n_l1'] = 100
+    config['n_l2'] = 100
+    config['n_l3'] = 100
+    config['n_l4'] = 100
+    config['n_l5'] = 100
+
+    r = Runner(worker, experiment, config)
+    r.run()
 if __name__ == "__main__":
     main()
