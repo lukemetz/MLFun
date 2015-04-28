@@ -32,20 +32,21 @@ def linear(n):
             use_bias=True)
 
 class ModelHelper():
-    def __init__(self):
+    def __init__(self, config):
         self.X = T.tensor4("features")
+        c = config
 
         seq = BrickSequence(input_dim = (3, 32, 32), bricks=[
-            conv3(10),
-            conv3(10),
+            conv3(c['n_l1']),
+            conv3(c['n_l2']),
             max_pool(),
-            #conv3(10),
-            #conv3(10),
+            conv3(c['n_l3']),
+            conv3(c['n_l4']),
             max_pool(),
             #conv3(10),
             #conv3(10),
             Flattener(),
-            linear(10),
+            linear(c['n_l5']),
             Softmax()
             ])
 

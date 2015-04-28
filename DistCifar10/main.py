@@ -19,18 +19,24 @@ from cuboid.algorithms import NAG, AdaM
 from blocks.main_loop import MainLoop
 
 from cuboid.extensions import EpochProgress, LogToFile
-from cuboid.extensions.distribute import DistributeUpdateAndFinish
+from cuboid.extensions.distribute_extensions import DistributeUpdate, DistributeWhetlabFinish
 
 from model import ModelHelper
 
 from distribute import worker_from_url
+from distribute.wl import make_next_jobs_func
 import os
+
+import whetlab
 
 import logging
 logging.basicConfig()
 
 class Runner(object):
-    def __init__(self, worker, configs):
+    def __init__(self, worker, experiment):
+        config = experiment.get_by_result_id(int(worker.running_job))
+        print config, worker.running_job
+
         # Data
         dataset = CIFAR10('train', flatten=False)
         test_dataset = CIFAR10('test', flatten=False)
@@ -43,7 +49,11 @@ class Runner(object):
         test_stream = DataStream(test_dataset, iteration_scheme=test_scheme)
 
         # Model
-        m = ModelHelper()
+        m = ModelHelper(config)
+
+        def score_func(mainloop):
+            scores = mainloop.log.to_dataframe()["test_accur"].values
+            return np.mean(np.sort(scores)[-4:-1])
 
         # Algorithm
         cg = ComputationGraph([m.cost])
@@ -51,9 +61,10 @@ class Runner(object):
                 cost = m.cost, params=cg.parameters,
                 step_rule = AdaM())
 
-        job_name = os.path.basename(worker.running_job)[0:-4]
+        job_name = os.path.basename(worker.running_job)
         update_path = (os.path.join(os.path.join(worker.path, "updates"), job_name))
-        os.mkdir(update_path)
+        if not os.path.exists(update_path):
+            os.mkdir(update_path)
 
         self.main_loop = MainLoop(
             algorithm,
@@ -67,11 +78,12 @@ class Runner(object):
                     [m.cost, m.accur],
                     test_stream,
                     prefix="test")
-                , FinishAfter(after_n_epochs=10)
+                , FinishAfter(after_n_epochs=1)
                 , LogToFile(os.path.join(update_path, "log.csv"))
                 , Printing()
                 , EpochProgress(dataset.num_examples // batch_size + 1)
-                , DistributeUpdateAndFinish(worker, every_n_epochs=3)
+                , DistributeUpdate(worker, every_n_epochs=1)
+                , DistributeWhetlabFinish(worker, experiment, score_func)
                 #, Plot('cifar10',
                     #channels=[['train_cost', 'test_cost'], ['train_accur', 'test_accur']])
                 ])
@@ -80,10 +92,18 @@ class Runner(object):
 
 import sys
 import pickle
-if __name__ == "__main__":
+def main():
     github_remote = "git@github.com:lukemetz/cifar10_sync.git"
     worker = worker_from_url(github_remote, path="cifar10_sync_"+sys.argv[1], name=sys.argv[1])
-    for job in worker.get_job_iterator():
-        config = pickle.load(open(os.path.join(worker.path, job), "r+"))
-        r = Runner(worker, config)
+    print "getting whetlab experiment"
+    experiment = whetlab.Experiment(name="Cifar10_2")
+
+    while True:
+        job = worker.get_next_job(make_next_jobs_func(worker, experiment))
+        print job
+        if job == None:
+            return
+        r = Runner(worker, experiment)
         r.run()
+if __name__ == "__main__":
+    main()
