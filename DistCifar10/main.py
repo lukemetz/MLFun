@@ -24,7 +24,7 @@ from cuboid.extensions.distribute_extensions import DistributeUpdate, Distribute
 from model import ModelHelper
 
 from distribute import worker_from_url
-from distribute.wl import make_next_jobs_func
+from distribute import whetlab_make_next_jobs_func
 import os
 
 import whetlab
@@ -99,7 +99,7 @@ def main():
     experiment = whetlab.Experiment(name="Cifar10_2")
 
     while True:
-        job = worker.get_next_job(make_next_jobs_func(worker, experiment))
+        job = worker.get_next_job(whetlab_make_next_jobs_func(worker, experiment))
         print job
         if job == None:
             return
