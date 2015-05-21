@@ -1,0 +1,13 @@
+LSTM performance, 88% at peak.
+
+Convnet
+Able to get to as low as .16 error with 1 conv. starts to diverage @ epoch 21?
+Does not seem to overfit at all. attempted to fix this by adding another conv layer.
+  As expected, adding this second layer rapidly speeds up training. .20 test @ epoch 3.
+  Still no overfitting at 7 epoch. @ .1522 misclass
+  These two conv layers now exceed older, ~.135 error on test. Fairly noisy though. 
+  Next epoch .150 error.
+
+Data usage is huge. Lets try to use fuels new data server thinngy
+
+
