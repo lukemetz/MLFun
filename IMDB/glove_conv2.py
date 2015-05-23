@@ -20,7 +20,7 @@ from blocks.extensions.plot import Plot
 
 
 from blocks.algorithms import GradientDescent, Adam, Scale, StepClipping, CompositeRule, AdaDelta
-from blocks.graph import ComputationGraph, apply_dropout
+from blocks.graph import ComputationGraph
 from blocks.main_loop import MainLoop
 from blocks.model import Model
 
@@ -32,7 +32,6 @@ from fuel.transformers import Padding
 
 from fuel.schemes import ShuffledScheme
 from Conv1D import Conv1D, MaxPooling1D
-from schemes import BatchwiseShuffledScheme
 
 from multiprocessing import Process
 import fuel
@@ -45,51 +44,62 @@ def main():
     y = T.imatrix('targets')
     x = m.mean() + x #stupid mask not always needed...
 
-    embedding_size = 300
-    glove_version = "glove.6B.300d.txt"
+    #embedding_size = 300
+    #glove_version = "glove.6B.300d.txt"
 
-    #embedding_size = 50
-    #glove_version = "vectors.6B.50d.txt"
+    embedding_size = 50
+    glove_version = "vectors.6B.50d.txt"
     wstd = 0.02
-
-
-    gloveMapping = Linear(
-            input_dim = embedding_size,
-            output_dim = embedding_size,
-            weights_init = IsotropicGaussian(std=wstd),
-            biases_init = Constant(0.0),
-            name="gloveMapping"
-            )
-    gloveMapping.initialize()
-    o = gloveMapping.apply(x)
-    o = Rectifier(name="rectivfyglove").apply(o)
 
     conv1 = Conv1D(filter_length=5, num_filters=128, input_dim=embedding_size,
             weights_init=IsotropicGaussian(std=wstd),
             biases_init=Constant(0.0))
     conv1.initialize()
-    o = conv1.apply(o)
+    o = conv1.apply(x)
     o = Rectifier(name="conv1red").apply(o)
-    o = MaxPooling1D(pooling_length=2).apply(o)
+    o = MaxPooling1D(pooling_length=5
+            #, step=2
+            ).apply(o)
 
     conv2 = Conv1D(filter_length=5, num_filters=128, input_dim=128,
             weights_init=IsotropicGaussian(std=wstd),
             biases_init=Constant(0.0),
+            step=3,
             name="conv2")
     conv2.initialize()
     o = conv2.apply(o)
+
     o = Rectifier(name="conv2rec").apply(o)
-    o = MaxPooling1D(pooling_length=2, name="pooling2").apply(o)
+    conv2 = Conv1D(filter_length=5, num_filters=128, input_dim=128,
+            weights_init=IsotropicGaussian(std=wstd),
+            biases_init=Constant(0.0),
+            step=3,
+            name="conv3")
+    conv2.initialize()
+    o = conv2.apply(o)
+    o = Rectifier(name="conv3rec").apply(o)
 
-    conv_out = o.mean(axis=1)
-    #conv_out = Rectifier(name="convrect").apply(conv_out)
+    fork = Fork(weights_init=IsotropicGaussian(0.02),
+            biases_init=Constant(0.),
+            input_dim=128,
+            output_dims=[128]*3,
+            output_names=['inputs', 'reset_inputs', 'update_inputs']
+            )
+    fork.initialize()
 
-    #rnn_out = rnn_states[:, -1, :]
-    #rnn_out = (rnn_states * m.dimshuffle(0, 1, 'x')).sum(axis=1) / m.sum(axis=1).dimshuffle(0, 'x')
-    #rnn_out = (rnn_states).mean(axis=1)# / m.sum(axis=1)
+    inputs, reset_inputs, update_inputs = fork.apply(o)
 
-    dropout_variables = []
-    dropout_variables.append(conv_out)
+    out = o.mean(axis=1)
+
+    #gru = GatedRecurrent(dim=128,
+            #weights_init=IsotropicGaussian(0.02),
+            #biases_init=IsotropicGaussian(0.0))
+
+    #gru.initialize()
+    #states = gru.apply(inputs=inputs, reset_inputs=reset_inputs, update_inputs=update_inputs)
+
+    #out = states[:, -1, :]
+
     hidden = Linear(
         input_dim = 128,
         output_dim = 128,
@@ -97,21 +107,18 @@ def main():
         biases_init = Constant(0.))
     hidden.initialize()
 
-    o = hidden.apply(conv_out)
+    o = hidden.apply(out)
     o = Rectifier().apply(o)
-    dropout_variables.append(o)
+    #hidden = Linear(
+        #input_dim = 128,
+        #output_dim = 128,
+        #weights_init = IsotropicGaussian(std=0.02),
+        #biases_init = Constant(0.),
+        #name="hiddenmap2")
+    #hidden.initialize()
 
-    hidden2 = Linear(
-        input_dim = 128,
-        output_dim = 128,
-        weights_init = IsotropicGaussian(std=0.02),
-        biases_init = Constant(0.),
-        name="hiddenmap2")
-    hidden2.initialize()
-
-    o = hidden2.apply(o)
-    o = Rectifier(name="rec2").apply(o)
-    dropout_variables.append(o)
+    #o = hidden.apply(o)
+    #o = Rectifier(name="rec2").apply(o)
 
 
     score_layer = Linear(
@@ -143,11 +150,10 @@ def main():
     # =================
 
     cg = ComputationGraph([cost])
-    cg = apply_dropout(cg, variables=dropout_variables, drop_prob=0.5)
     params = cg.parameters
 
     algorithm = GradientDescent(
-            cost = cg.outputs[0],
+            cost = cost,
             params=params,
             step_rule = CompositeRule([
                 StepClipping(threshold=10),
@@ -167,19 +173,18 @@ def main():
             'gpu1_test' : 5560,
             }
 
-    #batch_size = 16
-    batch_size = 32
+    batch_size = 16
     def start_server(port, which_set):
         fuel.server.logger.setLevel('WARN')
-        dataset = IMDBText(which_set, sorted=True)
 
+        dataset = IMDBText(which_set)
         n_train = dataset.num_examples
-        #scheme = ShuffledScheme(examples=n_train, batch_size=batch_size)
-        scheme = BatchwiseShuffledScheme(examples=n_train, batch_size=batch_size)
-
         stream = DataStream(
                 dataset=dataset,
-                iteration_scheme=scheme)
+                iteration_scheme=ShuffledScheme(
+                    examples=n_train,
+                    batch_size=batch_size)
+                )
         print "loading glove"
         glove = GloveTransformer(glove_version, data_stream=stream)
         padded = Padding(

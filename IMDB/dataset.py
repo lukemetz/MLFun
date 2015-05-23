@@ -65,15 +65,23 @@ class IMDB(IndexableDataset):
 @do_not_pickle_attributes('indexables')
 class IMDBText(IndexableDataset):
     """
-    IMDB dataset from the deeplearning tutorial.
+    IMDB dataset
+
+    Parameters
+    ----------
+    which_set : string
+        train or test
+    sorted : bool
+        whether or not to sort in order of length
     """
 
     provides_sources = ('features', 'targets')
     folder = 'aclImdb'
     num_examples = 0
 
-    def __init__(self, which_set, **kwargs):
+    def __init__(self, which_set, sorted=False, **kwargs):
         self.which_set = which_set
+        self.sorted = sorted
 
         super(IMDBText, self).__init__(
             OrderedDict(zip(self.provides_sources,
@@ -110,6 +118,11 @@ class IMDBText(IndexableDataset):
         #targets = targets[n-1000:n+1000]
 
         self.num_examples = len(features)
+
+        if self.sorted == True:
+            index = np.vectorize(len)(features).argsort()
+            features = features[index]
+            targets = targets[index]
 
         return (features, targets)
 

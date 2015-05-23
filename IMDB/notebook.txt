@@ -8,6 +8,15 @@ Does not seem to overfit at all. attempted to fix this by adding another conv la
   These two conv layers now exceed older, ~.135 error on test. Fairly noisy though. 
   Next epoch .150 error.
 
-Data usage is huge. Lets try to use fuels new data server thinngy
+  Second conv layer model gets like 88%, but this was only on 50d word embedding. Bumping up to 300 to see what happens.
+300d, able to get .10 error
+Data usage is huge. Lets try to use fuels new data server thinngy.
+  Now super quick.
 
+With the maxpools, started to overfit quicker.
+Added dropout on last fullyconnected
+Didn't do all that much. Still overfitting, same way.
+
+Lets speed this up. Looks like conv2d and max_pool arn't using dnn.
+  Quick speed test shows dnn faster.
 
