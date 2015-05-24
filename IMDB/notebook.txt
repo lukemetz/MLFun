@@ -20,3 +20,14 @@ Didn't do all that much. Still overfitting, same way.
 Lets speed this up. Looks like conv2d and max_pool arn't using dnn.
   Quick speed test shows dnn faster.
 
+Tried the weighted sigmoid, thought would train faster.
+Didn't actually do this. Makes me think that the network is not at all learning what I want it to.
+Need to trick it with good initializations.
+
+Bricks API is rather restrictive, I think I am going to make a wrapper
+that takes into account custom initialization as well as the fork needed to
+get the units in the right shape.
+Will be a GRULayer or something, not just the recurrent pieces.
+Also split off two different weights in there.
+
+
