@@ -1,14 +1,6 @@
 # Baseline / first draft heavily inspired by
 # https://github.com/laurent-dinh/dl_tutorials/blob/master/part_4_rnn/imdb_main.py
 
-
-# PassageGatedRecurrent: 53 seconds
-# CustomBlocksGatedRecurrent: 411 seconds
-# vanillaBlocksGatedRecurrent: 539 seconds
-# MyPortOfPassageToBlocks: 363 -- c linker 361
-# Direct passage with params: 445
-# NoOtherthings, c linker 357
-
 import theano
 from theano import tensor as T
 import numpy as np
@@ -50,15 +42,14 @@ import fuel
 import logging
 from initialization import SumInitialization
 
-from transformers import DropSources
-
+from passage.layers import GatedRecurrent as GatedRecurrentPassage
 
 def main():
     x = T.tensor3('features')
-    #m = T.matrix('features_mask')
+    m = T.matrix('features_mask')
     y = T.imatrix('targets')
 
-    #x = x+m.mean()*0
+    x = x+m.mean()*0
 
     embedding_size = 300
     glove_version = "glove.6B.300d.txt"
@@ -79,42 +70,26 @@ def main():
     #gloveMapping.initialize()
     #o = gloveMapping.apply(x)
     #o = Rectifier(name="gloveRec").apply(o)
-    o = x
-    input_dim = 300
 
-    gru = GatedRecurrentFull(
-            hidden_dim = input_dim,
-            activation=Tanh(),
-            #activation=bricks.Identity(),
-            gate_activation=Sigmoid(),
-            state_to_state_init=SumInitialization([Identity(0.1), IsotropicGaussian(0.02)]),
-            state_to_reset_init=IsotropicGaussian(0.02),
-            state_to_update_init=IsotropicGaussian(0.02),
-            input_to_state_transform = Linear(
-                input_dim=input_dim,
-                output_dim=input_dim,
-                weights_init=IsotropicGaussian(0.02),
-                biases_init=Constant(0.0)),
-            input_to_update_transform = Linear(
-                input_dim=input_dim,
-                output_dim=input_dim,
-                weights_init=IsotropicGaussian(0.02),
-                biases_init=Constant(0.0)),
-            input_to_reset_transform = Linear(
-                input_dim=input_dim,
-                output_dim=input_dim,
-                weights_init=IsotropicGaussian(0.02),
-                biases_init=Constant(0.0))
-            )
-    gru.initialize()
-    rnn_in = o.dimshuffle(1, 0, 2)
-    #rnn_in = o
-    #rnn_out = gru.apply(rnn_in, mask=m.T)
-    rnn_out = gru.apply(rnn_in)
-    state_to_state = gru.rnn.state_to_state
-    state_to_state.name = "state_to_state"
+    rnn_in = x.dimshuffle(1, 0, 2)
+    class Stub(object):
+        def output(self, dropout_active=False):
+            return rnn_in
+
+    l_in = Stub()
+    l_in.size = 300
+
+    layer = GatedRecurrentPassage(
+            size=300,
+            gate_activation='sigmoid')
+    layer.connect(l_in)
+    from blocks.roles import add_role, WEIGHT, INITIAL_STATE
+    print layer.params
+    [add_role(l, WEIGHT) for l in layer.params]
+
+    rnn_out = layer.output()
+    o = rnn_out
     #o = rnn_out[-1, :, :]
-    o = rnn_out[-1]
 
     #o = rnn_out[:, -1, :]
     #o = rnn_out.mean(axis=1)
@@ -158,6 +133,8 @@ def main():
     cg = ComputationGraph([cost])
     #cg = apply_dropout(cg, variables=dropout_variables, drop_prob=0.5)
     params = cg.parameters
+    print params
+    print "Len params", len(params)
 
     algorithm = GradientDescent(
             cost = cg.outputs[0],
@@ -181,8 +158,7 @@ def main():
             }
 
     #batch_size = 16
-    #batch_size = 32
-    batch_size = 40
+    batch_size = 32
     def start_server(port, which_set):
         fuel.server.logger.setLevel('WARN')
         dataset = IMDBText(which_set, sorted=True)
@@ -202,8 +178,6 @@ def main():
                 mask_sources=('features',)
                 )
 
-        padded = DropSources(padded, ['features_mask'])
-
         fuel.server.start_server(padded, port=port, hwm=20)
 
     train_port = ports[theano.config.device + '_train']
@@ -213,12 +187,9 @@ def main():
     test_port = ports[theano.config.device + '_test']
     test_p = Process(target=start_server, args=(test_port, 'test'))
     test_p.start()
-
-    #train_stream = ServerDataStream(('features', 'features_mask', 'targets'), port=train_port)
-    #test_stream = ServerDataStream(('features', 'features_mask', 'targets'), port=test_port)
-
-    train_stream = ServerDataStream(('features', 'targets'), port=train_port)
-    test_stream = ServerDataStream(('features', 'targets'), port=test_port)
+sources
+    train_stream = ServerDataStream(('features', 'features_mask', 'targets'), port=train_port)
+    test_stream = ServerDataStream(('features', 'features_mask', 'targets'), port=test_port)
 
     print "setting up model"
     #import ipdb
@@ -229,14 +200,14 @@ def main():
     model = Model(cost)
     extensions = []
     extensions.append(EpochProgress(batch_per_epoch=n_examples // batch_size + 1))
-    #extensions.append(TrainingDataMonitoring(
-        #[
-            #cost,
-            #misclassification
-            #],
-        #prefix='train',
-        #every_n_batches=30
-        #))
+    extensions.append(TrainingDataMonitoring(
+        [
+            cost,
+            misclassification
+            ],
+        prefix='train',
+        every_n_batches=30
+        ))
 
     #extensions.append(DataStreamMonitoring(
         #[cost, misclassification],
@@ -249,16 +220,15 @@ def main():
 
     #extensions.append(Plot("norms", channels=[['train_lstm_norm', 'train_pre_norm']], after_epoch=True))
     #extensions.append(Plot(theano.config.device+"_result", channels=[['test_misclassification', 'train_misclassification']], after_epoch=True))
+    extensions.append(PlotHistogram(
+        channels=['train_state_to_state'],
+        bins=50,
+        every_n_batches=30))
 
-    #extensions.append(PlotHistogram(
-        #channels=['train_state_to_state'],
-        #bins=50,
-        #every_n_batches=30))
-
-    #extensions.append(Plot(
-        #theano.config.device+"_result",
-        #channels=[['train_cost']],
-        #every_n_batches=30))
+    extensions.append(Plot(
+        theano.config.device+"_result",
+        channels=[['train_cost']],
+        every_n_batches=30))
 
 
     main_loop = MainLoop(
