@@ -10,6 +10,7 @@
 # NoOtherthings, c linker 357
 
 import theano
+theano.config.nvcc.flags='-arch=sm_52'
 from theano import tensor as T
 import numpy as np
 
@@ -176,6 +177,10 @@ def main():
     ports = {
             'gpu0_train' : 5557,
             'gpu0_test' : 5558,
+            'cuda0_train' : 5557,
+            'cuda0_test' : 5558,
+            'opencl0:0_train' : 5557,
+            'opencl0:0_test' : 5558,
             'gpu1_train' : 5559,
             'gpu1_test' : 5560,
             }

@@ -157,7 +157,6 @@ def main():
 
             )
 
-
     # ========
     print "setting up data"
     ports = {
@@ -210,18 +209,18 @@ def main():
     model = Model(cg.outputs[0])
     extensions = []
     extensions.append(EpochProgress(batch_per_epoch=n_examples // batch_size + 1))
-    extensions.append(TrainingDataMonitoring(
-        [cost, misclassification],
-        prefix='train',
-        after_epoch=True
-        ))
+    #extensions.append(TrainingDataMonitoring(
+        #[cost, misclassification],
+        #prefix='train',
+        #after_epoch=True
+        #))
 
-    extensions.append(DataStreamMonitoring(
-        [cost, misclassification],
-        data_stream=test_stream,
-        prefix='test',
-        after_epoch=True
-        ))
+    #extensions.append(DataStreamMonitoring(
+        #[cost, misclassification],
+        #data_stream=test_stream,
+        #prefix='test',
+        #after_epoch=True
+        #))
     extensions.append(Timing())
     extensions.append(Printing())
 
@@ -233,6 +232,7 @@ def main():
             data_stream=train_stream,
             algorithm=algorithm,
             extensions=extensions)
+    print "Made it to run!"
     main_loop.run()
 
 
