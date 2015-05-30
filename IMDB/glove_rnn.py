@@ -181,7 +181,7 @@ def main_run(_config, _log):
         #m: np.ones((3, 101), dtype=theano.config.floatX)})
     #raw_input()
     #o = rnn_out.mean(axis=1)
-    #dropout_variables.append(o)
+    dropout_variables.append(o)
 
     score_layer = Linear(
             input_dim = hidden_dim,
