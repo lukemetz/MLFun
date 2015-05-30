@@ -104,7 +104,7 @@ class GruOp(GpuOp, COp):
 
     def __init__(self):
         COp.__init__(self, ['GruOp.cu'],
-                'APPLY_SPECIFIC(gated_unit_main)')
+                'APPLY_SPECIFIC(gated_unit_main_2)')
 
     def make_node(self,
             initial_state,

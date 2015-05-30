@@ -389,6 +389,7 @@ class GatedRecurrentFull(Initializable):
         gate_inputs = tensor.concatenate([update_from_in, reset_from_in], axis=2)
 
         output = self.rnn.apply(inputs=states_from_in, update_inputs=update_from_in, reset_inputs=reset_from_in, mask=mask)
+        #output = self.rnn.apply(inputs=states_from_in, gate_inputs=gate_inputs)
 
         return output
 
