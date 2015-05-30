@@ -103,6 +103,7 @@ def main_run(_config, _log):
 
     #x = x+m.mean()*0
 
+    dropout_variables = []
     embedding_size = 300
     glove_version = "glove.6B.300d.txt"
     #embedding_size = 50
@@ -119,6 +120,7 @@ def main_run(_config, _log):
     gloveMapping.initialize()
     o = gloveMapping.apply(x)
     o = Rectifier(name="gloveRec").apply(o)
+    dropout_variables.append(o)
 
     summed_mapped_glove = o.sum(axis=1) # take out the sequence
     glove_out = Linear(
@@ -179,6 +181,7 @@ def main_run(_config, _log):
         #m: np.ones((3, 101), dtype=theano.config.floatX)})
     #raw_input()
     #o = rnn_out.mean(axis=1)
+    #dropout_variables.append(o)
 
     score_layer = Linear(
             input_dim = hidden_dim,
@@ -216,7 +219,7 @@ def main_run(_config, _log):
     # =================
 
     cg = ComputationGraph([cost])
-    #cg = apply_dropout(cg, variables=dropout_variables, drop_prob=0.5)
+    cg = apply_dropout(cg, variables=dropout_variables, drop_prob=0.5)
     params = cg.parameters
 
     algorithm = GradientDescent(
@@ -294,7 +297,7 @@ def main_run(_config, _log):
     batches_extensions = 100
     monitor_rate = 50
     #======
-    model = Model(cost)
+    model = Model(cg.outputs[0])
     extensions = []
     extensions.append(EpochProgress(batch_per_epoch=n_examples // batch_size + 1))
     extensions.append(TrainingDataMonitoring(
