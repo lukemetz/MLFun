@@ -9,52 +9,81 @@
 # Direct passage with params: 445
 # NoOtherthings, c linker 357
 
-import theano
-theano.config.nvcc.flags='-arch=sm_52'
-from theano import tensor as T
-import numpy as np
 
-from dataset import IMDBText, GloveTransformer
+# New,
+# My custom GRU, 128
+# Blocks: 139
 
-from blocks.initialization import Uniform, Constant, IsotropicGaussian, NdarrayInitialization, Identity, Orthogonal
-from blocks.bricks.recurrent import LSTM, SimpleRecurrent, GatedRecurrent
-from blocks.bricks.parallel import Fork
+# using custom. Pretty sure this is the strict flag for scans.
+# How slow is plotting?
+# 128 no monitor plot, every 60 batches: 127, great! can monitor batches with training data almost free!, Monitoring 10 to ensure: 131, 129 So frree
+# For
 
-from blocks.bricks import Linear, Sigmoid, Tanh, Rectifier
-from blocks import bricks
+#theano.config.nvcc.flags='-arch=sm_52'
 
-from blocks.extensions import Printing, Timing
-from blocks.extensions.monitoring import (DataStreamMonitoring,
-        TrainingDataMonitoring)
+from sacred import Experiment
+import ipdb
 
-from blocks.extensions.plot import Plot
-from plot import PlotHistogram
+ex = Experiment("rnn")
 
-from blocks.algorithms import GradientDescent, Adam, Scale, StepClipping, CompositeRule, AdaDelta
-from blocks.graph import ComputationGraph, apply_dropout
-from blocks.main_loop import MainLoop
-from blocks.model import Model
+train_p = None
+test_p = None
 
-from cuboid.algorithms import AdaM, NAG
-from cuboid.extensions import EpochProgress
+@ex.config
+def config():
+    wstd = 0.02
 
-from fuel.streams import DataStream, ServerDataStream
-from fuel.transformers import Padding
+@ex.capture
+def main_run(_config, _log):
+    from collections import namedtuple
+    c = namedtuple("Config", _config.keys())(*_config.values())
+    _log.info("Running with" + str(_config))
 
-from fuel.schemes import ShuffledScheme
-from Conv1D import Conv1D, MaxPooling1D
-from schemes import BatchwiseShuffledScheme
-from bricks import WeightedSigmoid, GatedRecurrentFull
+    import theano
+    from theano import tensor as T
+    import numpy as np
 
-from multiprocessing import Process
-import fuel
-import logging
-from initialization import SumInitialization
+    from dataset import IMDBText, GloveTransformer
 
-from transformers import DropSources
+    from blocks.initialization import Uniform, Constant, IsotropicGaussian, NdarrayInitialization, Identity, Orthogonal
+    from blocks.bricks.recurrent import LSTM, SimpleRecurrent, GatedRecurrent
+    from blocks.bricks.parallel import Fork
 
+    from blocks.bricks import Linear, Sigmoid, Tanh, Rectifier
+    from blocks import bricks
 
-def main():
+    from blocks.extensions import Printing, Timing
+    from blocks.extensions.monitoring import (DataStreamMonitoring,
+            TrainingDataMonitoring)
+
+    from blocks.extensions.plot import Plot
+    from plot import PlotHistogram
+
+    from blocks.algorithms import GradientDescent, Adam, Scale, StepClipping, CompositeRule, AdaDelta
+    from blocks.graph import ComputationGraph, apply_dropout
+    from blocks.main_loop import MainLoop
+    from blocks.model import Model
+
+    from cuboid.algorithms import AdaM, NAG
+    from cuboid.extensions import EpochProgress
+
+    from fuel.streams import DataStream, ServerDataStream
+    from fuel.transformers import Padding
+
+    from fuel.schemes import ShuffledScheme
+    from Conv1D import Conv1D, MaxPooling1D
+    from schemes import BatchwiseShuffledScheme
+    from bricks import WeightedSigmoid, GatedRecurrentFull
+
+    from multiprocessing import Process
+    import fuel
+    import logging
+    from initialization import SumInitialization
+
+    from transformers import DropSources
+    global train_p
+    global test_p
+
     x = T.tensor3('features')
     #m = T.matrix('features_mask')
     y = T.imatrix('targets')
@@ -65,46 +94,46 @@ def main():
     glove_version = "glove.6B.300d.txt"
     #embedding_size = 50
     #glove_version = "vectors.6B.50d.txt"
-    wstd = 0.02
 
     #vaguely normalize
     x = x / 3.0 - .5
 
-    #gloveMapping = Linear(
-            #input_dim = embedding_size,
-            #output_dim = 128,
-            #weights_init = Orthogonal(),
-            #biases_init = Constant(0.0),
-            #name="gloveMapping"
-            #)
-    #gloveMapping.initialize()
-    #o = gloveMapping.apply(x)
-    #o = Rectifier(name="gloveRec").apply(o)
-    o = x
-    input_dim = 300
+    gloveMapping = Linear(
+            input_dim = embedding_size,
+            output_dim = 128,
+            weights_init = Orthogonal(),
+            biases_init = Constant(0.0),
+            name="gloveMapping"
+            )
+    gloveMapping.initialize()
+    o = gloveMapping.apply(x)
+    o = Rectifier(name="gloveRec").apply(o)
+
+    input_dim = 128
+    hidden_dim = 128
 
     gru = GatedRecurrentFull(
-            hidden_dim = input_dim,
+            hidden_dim = hidden_dim,
             activation=Tanh(),
             #activation=bricks.Identity(),
             gate_activation=Sigmoid(),
-            state_to_state_init=SumInitialization([Identity(0.1), IsotropicGaussian(0.02)]),
-            state_to_reset_init=IsotropicGaussian(0.02),
-            state_to_update_init=IsotropicGaussian(0.02),
+            state_to_state_init=SumInitialization([Identity(0.1), IsotropicGaussian(c.wstd)]),
+            state_to_reset_init=IsotropicGaussian(c.wstd),
+            state_to_update_init=IsotropicGaussian(c.wstd),
             input_to_state_transform = Linear(
                 input_dim=input_dim,
-                output_dim=input_dim,
-                weights_init=IsotropicGaussian(0.02),
+                output_dim=hidden_dim,
+                weights_init=IsotropicGaussian(c.wstd),
                 biases_init=Constant(0.0)),
             input_to_update_transform = Linear(
                 input_dim=input_dim,
-                output_dim=input_dim,
-                weights_init=IsotropicGaussian(0.02),
+                output_dim=hidden_dim,
+                weights_init=IsotropicGaussian(c.wstd),
                 biases_init=Constant(0.0)),
             input_to_reset_transform = Linear(
                 input_dim=input_dim,
-                output_dim=input_dim,
-                weights_init=IsotropicGaussian(0.02),
+                output_dim=hidden_dim,
+                weights_init=IsotropicGaussian(c.wstd),
                 biases_init=Constant(0.0))
             )
     gru.initialize()
@@ -127,9 +156,9 @@ def main():
     #o = rnn_out.mean(axis=1)
 
     score_layer = Linear(
-            input_dim = 300,
+            input_dim = hidden_dim,
             output_dim = 1,
-            weights_init = IsotropicGaussian(std=wstd),
+            weights_init = IsotropicGaussian(std=c.wstd),
             biases_init = Constant(0.),
             name="linear2")
     score_layer.initialize()
@@ -226,22 +255,24 @@ def main():
     test_stream = ServerDataStream(('features', 'targets'), port=test_port)
 
     print "setting up model"
-    #import ipdb
     #ipdb.set_trace()
 
     n_examples = 25000
+    print "Batches per epoch", n_examples // (batch_size + 1)
+    batches_extensions = 100
     #======
     model = Model(cost)
     extensions = []
     extensions.append(EpochProgress(batch_per_epoch=n_examples // batch_size + 1))
-    #extensions.append(TrainingDataMonitoring(
-        #[
-            #cost,
-            #misclassification
-            #],
-        #prefix='train',
-        #every_n_batches=30
-        #))
+    extensions.append(TrainingDataMonitoring(
+        [
+            cost,
+            misclassification
+            ],
+        prefix='train',
+        every_n_batches=10,
+        after_epoch=True
+        ))
 
     #extensions.append(DataStreamMonitoring(
         #[cost, misclassification],
@@ -260,10 +291,10 @@ def main():
         #bins=50,
         #every_n_batches=30))
 
-    #extensions.append(Plot(
-        #theano.config.device+"_result",
-        #channels=[['train_cost']],
-        #every_n_batches=30))
+    extensions.append(Plot(
+        theano.config.device+"_result",
+        channels=[['train_cost'], ['train_misclassification']],
+        every_n_batches=10))
 
 
     main_loop = MainLoop(
@@ -274,5 +305,13 @@ def main():
     main_loop.run()
 
 
-if __name__ == "__main__":
-    main()
+@ex.automain
+def main():
+    main_run()
+    #try:
+        #main_run()
+    #finally:
+        #print "Killing data servers"
+        #train_p.terminate()
+        #test_p.terminate()
+
