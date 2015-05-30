@@ -29,14 +29,27 @@ ex = Experiment("rnn")
 train_p = None
 test_p = None
 
-@ex.config
-def config():
-    wstd = 0.02
+import atexit
+def exit_handler():
+    if train_p:
+        train_p.terminate()
+    if test_p:
+        test_p.terminate()
 
-@ex.capture
+atexit.register(exit_handler)
+
+@ex.config
+def default_config():
+    wstd = 0.02
+    rnn_input_dim = 128
+    rnn_dim = 128
+    deeply_factor = 0.2
+
+@ex.automain
 def main_run(_config, _log):
     from collections import namedtuple
     c = namedtuple("Config", _config.keys())(*_config.values())
+
     _log.info("Running with" + str(_config))
 
     import theano
@@ -96,12 +109,13 @@ def main_run(_config, _log):
     #glove_version = "vectors.6B.50d.txt"
 
     #vaguely normalize
-    x = x / 3.0 - .5
+    #x = x / 3.0 - .5
 
     gloveMapping = Linear(
             input_dim = embedding_size,
-            output_dim = 128,
+            output_dim = c.rnn_input_dim,
             weights_init = Orthogonal(),
+            #weights_init = IsotropicGaussian(c.wstd),
             biases_init = Constant(0.0),
             name="gloveMapping"
             )
@@ -109,15 +123,27 @@ def main_run(_config, _log):
     o = gloveMapping.apply(x)
     o = Rectifier(name="gloveRec").apply(o)
 
-    input_dim = 128
-    hidden_dim = 128
+    summed_mapped_glove = o.sum(axis=1) # take out the sequence
+    glove_out = Linear(
+            input_dim = c.rnn_input_dim,
+            output_dim = 1.0,
+            weights_init = IsotropicGaussian(c.wstd),
+            biases_init = Constant(0.0),
+            name="mapping_to_output"
+            )
+    glove_out.initialize()
+    deeply_sup_0 = glove_out.apply(summed_mapped_glove)
+    deeply_sup_probs = Sigmoid(name="deeply_sup_softmax").apply(deeply_sup_0)
+
+    input_dim = c.rnn_input_dim
+    hidden_dim = c.rnn_dim
 
     gru = GatedRecurrentFull(
             hidden_dim = hidden_dim,
             activation=Tanh(),
             #activation=bricks.Identity(),
             gate_activation=Sigmoid(),
-            state_to_state_init=SumInitialization([Identity(0.1), IsotropicGaussian(c.wstd)]),
+            state_to_state_init=SumInitialization([Identity(1.0), IsotropicGaussian(c.wstd)]),
             state_to_reset_init=IsotropicGaussian(c.wstd),
             state_to_update_init=IsotropicGaussian(c.wstd),
             input_to_state_transform = Linear(
@@ -129,12 +155,12 @@ def main_run(_config, _log):
                 input_dim=input_dim,
                 output_dim=hidden_dim,
                 weights_init=IsotropicGaussian(c.wstd),
-                biases_init=Constant(0.0)),
+                biases_init=Constant(-2.0)),
             input_to_reset_transform = Linear(
                 input_dim=input_dim,
                 output_dim=hidden_dim,
                 weights_init=IsotropicGaussian(c.wstd),
-                biases_init=Constant(0.0))
+                biases_init=Constant(-3.0))
             )
     gru.initialize()
     rnn_in = o.dimshuffle(1, 0, 2)
@@ -165,7 +191,12 @@ def main_run(_config, _log):
     o = score_layer.apply(o)
     probs = Sigmoid().apply(o)
 
+
+    probs = deeply_sup_probs
     cost = - (y * T.log(probs) + (1-y) * T.log(1 - probs)).mean()
+    #cost_deeply_sup0 = - (y * T.log(deeply_sup_probs) + (1-y) * T.log(1 - deeply_sup_probs)).mean()
+    # cost += cost_deeply_sup0 * c.deeply_factor
+
     cost.name = 'cost'
     misclassification = (y * (probs < 0.5) + (1-y) * (probs > 0.5)).mean()
     misclassification.name = 'misclassification'
@@ -194,7 +225,9 @@ def main_run(_config, _log):
             params=params,
             step_rule = CompositeRule([
                 StepClipping(threshold=4),
-                AdaM(),
+                Adam(learning_rate=0.002,
+                    beta1=0.1,
+                    beta2=0.001),
                 #NAG(lr=0.1, momentum=0.9),
                 #AdaDelta(),
                 ])
@@ -260,6 +293,7 @@ def main_run(_config, _log):
     n_examples = 25000
     print "Batches per epoch", n_examples // (batch_size + 1)
     batches_extensions = 100
+    monitor_rate = 50
     #======
     model = Model(cost)
     extensions = []
@@ -270,16 +304,17 @@ def main_run(_config, _log):
             misclassification
             ],
         prefix='train',
-        every_n_batches=10,
-        after_epoch=True
+        every_n_batches=monitor_rate,
         ))
 
-    #extensions.append(DataStreamMonitoring(
-        #[cost, misclassification],
-        #data_stream=test_stream,
-        #prefix='test',
-        #after_epoch=True
-        #))
+    extensions.append(DataStreamMonitoring(
+        [cost, misclassification],
+        data_stream=test_stream,
+        prefix='test',
+        after_epoch=True,
+        before_first_epoch=False
+        ))
+
     extensions.append(Timing())
     extensions.append(Printing())
 
@@ -294,7 +329,7 @@ def main_run(_config, _log):
     extensions.append(Plot(
         theano.config.device+"_result",
         channels=[['train_cost'], ['train_misclassification']],
-        every_n_batches=10))
+        every_n_batches=monitor_rate))
 
 
     main_loop = MainLoop(
@@ -303,15 +338,3 @@ def main_run(_config, _log):
             algorithm=algorithm,
             extensions=extensions)
     main_loop.run()
-
-
-@ex.automain
-def main():
-    main_run()
-    #try:
-        #main_run()
-    #finally:
-        #print "Killing data servers"
-        #train_p.terminate()
-        #test_p.terminate()
-

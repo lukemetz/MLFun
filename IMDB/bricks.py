@@ -334,12 +334,19 @@ class GatedRecurrentFull(Initializable):
         self.input_to_update_transform.name += "_input_to_update_transform"
         self.input_to_reset_transform.name += "_input_to_reset_transform"
 
-        #self.rnn = GatedRecurrent(
-        self.rnn = GatedRecurrentFast(
-                weights_init=Constant(np.nan),
-                dim=self.hidden_dim,
-                activation=activation,
-                gate_activation=gate_activation)
+        self.use_mine = True
+        if self.use_mine:
+            self.rnn = GatedRecurrentFast(
+                    weights_init=Constant(np.nan),
+                    dim=self.hidden_dim,
+                    activation=activation,
+                    gate_activation=gate_activation)
+        else:
+            self.rnn = GatedRecurrent(
+                    weights_init=Constant(np.nan),
+                    dim=self.hidden_dim,
+                    activation=activation,
+                    gate_activation=gate_activation)
 
         self.children = [self.rnn,
                 self.input_to_state_transform, self.input_to_update_transform, self.input_to_reset_transform]
@@ -361,9 +368,11 @@ class GatedRecurrentFull(Initializable):
 
         self.rnn.state_to_state.set_value(state_to_state)
 
-        #self.rnn.state_to_gates.set_value(np.hstack((state_to_update, state_to_reset)))
-        self.rnn.state_to_update.set_value(state_to_update)
-        self.rnn.state_to_reset.set_value(state_to_reset)
+        if self.use_mine:
+            self.rnn.state_to_update.set_value(state_to_update)
+            self.rnn.state_to_reset.set_value(state_to_reset)
+        else:
+            self.rnn.state_to_gates.set_value(np.hstack((state_to_update, state_to_reset)))
 
     @application(inputs=['input_'], outputs=['output'])
     def apply(self, input_, mask=None):
@@ -388,8 +397,10 @@ class GatedRecurrentFull(Initializable):
 
         gate_inputs = tensor.concatenate([update_from_in, reset_from_in], axis=2)
 
-        output = self.rnn.apply(inputs=states_from_in, update_inputs=update_from_in, reset_inputs=reset_from_in, mask=mask)
-        #output = self.rnn.apply(inputs=states_from_in, gate_inputs=gate_inputs)
+        if self.use_mine:
+            output = self.rnn.apply(inputs=states_from_in, update_inputs=update_from_in, reset_inputs=reset_from_in, mask=mask)
+        else:
+            output = self.rnn.apply(inputs=states_from_in, gate_inputs=gate_inputs)
 
         return output
 
@@ -429,9 +440,6 @@ if __name__ == "__main__":
     gru.initialize()
     out = gru.apply(x)
 
-    print "EVALled a thing"
-    res = out.shape.eval({x: np.ones((6, 9, 19), dtype=floatX)})
-    print res
 
     ### Identity testing
     from blocks.initialization import Identity, IsotropicGaussian
@@ -463,7 +471,7 @@ if __name__ == "__main__":
                 output_dim = dim,
                 #weights_init=Constant(0.0),
                 weights_init=IsotropicGaussian(0.02),
-                biases_init=Constant(2.0)
+                biases_init=Constant(-1)
                 ),
 
             input_to_reset_transform = Linear(
@@ -471,7 +479,7 @@ if __name__ == "__main__":
                 output_dim = dim,
                 #weights_init=Constant(0.0),
                 weights_init=IsotropicGaussian(0.2),
-                biases_init=Constant(10.0)
+                biases_init=Constant(-100.0)
                 ),
             )
     gru.initialize()
@@ -481,18 +489,16 @@ if __name__ == "__main__":
     #xt = x
     out = gru.apply(xt)
     #out = gru.apply(x)
-    x_val = np.eye(4, 4).reshape((1, 8, 2)).astype(dtype=floatX)
-    x_val = np.vstack([x_val for _ in range(4)])
-    print x_val.shape, "input shape, form of <batch, squence, feature>"
-
+    x_val = np.zeros((1, 6, 2)).astype(dtype=floatX)
+    x_val[0][0][0] = 3.0
+    #x_val = np.vstack([x_val for _ in range(2)])
+    print "Inputting this"
     print x_val
     print "EVALled a thing"
     print xt.eval({x: x_val}).shape, "in shape"
     print out.eval({x: x_val}).shape, "out shape"
-    res = xt.eval({x: x_val})
-    print res
-
-    print res.shape
+    print "Result of rnn"
+    print out.eval({x: x_val})
     #print gru.rnn.state_to_state.eval({}), "state to state"
 
 
