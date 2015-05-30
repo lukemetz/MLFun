@@ -108,9 +108,6 @@ def main_run(_config, _log):
     #embedding_size = 50
     #glove_version = "vectors.6B.50d.txt"
 
-    #vaguely normalize
-    #x = x / 3.0 - .5
-
     gloveMapping = Linear(
             input_dim = embedding_size,
             output_dim = c.rnn_input_dim,
@@ -155,12 +152,14 @@ def main_run(_config, _log):
                 input_dim=input_dim,
                 output_dim=hidden_dim,
                 weights_init=IsotropicGaussian(c.wstd),
-                biases_init=Constant(-2.0)),
+                #biases_init=Constant(-2.0)),
+                biases_init=Constant(-1.0)),
             input_to_reset_transform = Linear(
                 input_dim=input_dim,
                 output_dim=hidden_dim,
                 weights_init=IsotropicGaussian(c.wstd),
-                biases_init=Constant(-3.0))
+                #biases_init=Constant(-3.0))
+                biases_init=Constant(-2.0))
             )
     gru.initialize()
     rnn_in = o.dimshuffle(1, 0, 2)
@@ -192,7 +191,7 @@ def main_run(_config, _log):
     probs = Sigmoid().apply(o)
 
 
-    probs = deeply_sup_probs
+    #probs = deeply_sup_probs
     cost = - (y * T.log(probs) + (1-y) * T.log(1 - probs)).mean()
     #cost_deeply_sup0 = - (y * T.log(deeply_sup_probs) + (1-y) * T.log(1 - deeply_sup_probs)).mean()
     # cost += cost_deeply_sup0 * c.deeply_factor

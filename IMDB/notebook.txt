@@ -30,4 +30,6 @@ get the units in the right shape.
 Will be a GRULayer or something, not just the recurrent pieces.
 Also split off two different weights in there.
 
-
+So the really simple linear net works really well...
+input -> linear -> sum sequence -> linear to score
+like 88%
